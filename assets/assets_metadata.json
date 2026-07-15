@@ -1,0 +1,23 @@
+{
+  "project": "AI Multilingual Voice-to-Text Translator",
+  "theme": {
+    "palette": {
+      "primary": "#6366F1",
+      "secondary": "#7C3AED",
+      "accent": "#06B6D4",
+      "success": "#22C55E",
+      "warning": "#F59E0B",
+      "danger": "#EF4444",
+      "background_dark": "#0F172A",
+      "card_dark": "#1E293B"
+    },
+    "fonts": {
+      "sans": "Inter, sans-serif",
+      "headings": "Outfit, sans-serif"
+    }
+  },
+  "icons": {
+    "framework": "lucide-react",
+    "main_icons": ["Mic", "Languages", "BarChart2", "History", "Settings", "Globe", "Copy", "Download", "Volume2"]
+  }
+}

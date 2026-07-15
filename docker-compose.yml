@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-data:/app
+      # Cache huggingface downloads to prevent downloading models on container rebuilds
+      - hf-cache:/root/.cache/huggingface
+    environment:
+      - WHISPER_MODEL_NAME=openai/whisper-tiny
+      - NLLB_MODEL_NAME=facebook/nllb-200-distilled-600M
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    restart: always
+
+volumes:
+  backend-data:
+  hf-cache:
