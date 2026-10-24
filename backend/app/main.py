@@ -53,19 +53,42 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
+        "current_engine": pipeline_singleton.preferred_engine,
+        "nllb_cached": pipeline_singleton.is_nllb_available(),
         "models_cached": {
             "whisper": pipeline_singleton.whisper_model is not None,
-            "nllb": pipeline_singleton.nllb_model is not None
+            "nllb": pipeline_singleton.nllb_model is not None or pipeline_singleton.is_nllb_available()
         }
     }
+
+@app.get("/api/engine")
+def get_engine():
+    return {
+        "current_engine": pipeline_singleton.preferred_engine,
+        "nllb_cached": pipeline_singleton.is_nllb_available(),
+        "available_engines": ["auto", "fast", "nllb"]
+    }
+
+@app.post("/api/engine")
+def set_engine(engine: str = Form(...)):
+    if engine not in ["auto", "fast", "nllb"]:
+        raise HTTPException(status_code=400, detail="Invalid engine. Must be 'auto', 'fast', or 'nllb'.")
+    pipeline_singleton.preferred_engine = engine
+    return {"current_engine": pipeline_singleton.preferred_engine, "status": "updated"}
 
 @app.get("/api/languages")
 def get_languages():
     """Returns a list of supported languages for the dropdown list."""
     return [
-        {"code": code, "name": info["name"], "tts_voice": info["tts_voice"]}
+        {
+            "code": code,
+            "name": info["name"],
+            "whisper_code": info["whisper_code"],
+            "tts_voice": info["tts_voice"]
+        }
         for code, info in SUPPORTED_LANGUAGES.items()
     ]
+
 
 @app.post("/api/translate-audio")
 async def translate_audio(
@@ -188,19 +211,18 @@ async def translate_audio(
         raise HTTPException(status_code=500, detail=f"AI pipeline failed: {str(e)}")
 
 @app.post("/api/translate-text")
-def translate_text(
+async def translate_text(
     source_text: str = Form(...),
     source_lang: str = Form(...), # NLLB code or 'auto'
     target_lang: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    """Translates text from source language to target language."""
+    """Translates text from source language to target language and synthesizes TTS."""
     if target_lang not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail="Unsupported target language.")
         
     src_code = source_lang
     if source_lang == "auto" or not source_lang:
-        # Fallback default source language is English
         src_code = "eng_Latn"
     elif source_lang not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail="Unsupported source language.")
@@ -215,6 +237,16 @@ def translate_text(
             tgt_lang=target_lang
         )
         
+        # Generate TTS audio
+        temp_id = str(uuid.uuid4())
+        tts_filename = f"tts_txt_{temp_id}.mp3"
+        tts_path = os.path.join(TTS_OUTPUT_DIR, tts_filename)
+        tts_success = await pipeline_singleton.text_to_speech(
+            text=translated_text,
+            tgt_lang=target_lang,
+            output_path=tts_path
+        )
+        
         # Save to DB
         history_item = TranslationHistory(
             source_text=corrected_text,
@@ -224,15 +256,20 @@ def translate_text(
             target_lang=SUPPORTED_LANGUAGES[target_lang]["name"],
             target_lang_code=target_lang,
             confidence=1.0,
-            audio_duration=0.0
+            audio_duration=0.0,
+            original_audio_filename=None,
+            translated_audio_filename=tts_filename if tts_success else None
         )
         db.add(history_item)
         db.commit()
         db.refresh(history_item)
         
-        return history_item.to_dict()
+        result = history_item.to_dict()
+        result["tts_url"] = f"/static/tts/{tts_filename}" if tts_success else None
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Text translation failed: {str(e)}")
+
 
 @app.get("/api/tts")
 async def get_tts_stream(
@@ -290,6 +327,37 @@ def get_history(
         
     history = query.order_by(TranslationHistory.timestamp.desc()).all()
     return [item.to_dict() for item in history]
+
+@app.get("/api/history/export")
+def export_history(format: str = Query("json"), db: Session = Depends(get_db)):
+    """Exports translation history as downloadable CSV or JSON."""
+    items = db.query(TranslationHistory).order_by(TranslationHistory.timestamp.desc()).all()
+    if format.lower() == "csv":
+        import io, csv
+        from fastapi.responses import Response
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ID", "Timestamp", "Source Language", "Source Text", "Target Language", "Translated Text", "Confidence", "Duration (s)", "Favorite"])
+        for it in items:
+            writer.writerow([
+                it.id,
+                it.timestamp.isoformat() if it.timestamp else "",
+                it.detected_lang,
+                it.source_text,
+                it.target_lang,
+                it.translated_text,
+                round(it.confidence, 4) if it.confidence is not None else 1.0,
+                round(it.audio_duration, 2) if it.audio_duration is not None else 0.0,
+                it.is_favorite
+            ])
+        timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=translation_history_{timestamp_str}.csv"}
+        )
+    return [it.to_dict() for it in items]
+
 
 @app.post("/api/history/{item_id}/favorite")
 def toggle_favorite(item_id: int, db: Session = Depends(get_db)):

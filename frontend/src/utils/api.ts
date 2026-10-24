@@ -165,5 +165,28 @@ export const api = {
     const response = await fetch(`${API_BASE_URL}/api/dashboard/stats`);
     if (!response.ok) throw new Error('Failed to fetch dashboard stats');
     return response.json();
+  },
+
+  async getEngine(): Promise<{ current_engine: string; nllb_cached: boolean; available_engines: string[] }> {
+    const response = await fetch(`${API_BASE_URL}/api/engine`);
+    if (!response.ok) throw new Error('Failed to get translation engine');
+    return response.json();
+  },
+
+  async setEngine(engine: string): Promise<string> {
+    const formData = new FormData();
+    formData.append('engine', engine);
+    const response = await fetch(`${API_BASE_URL}/api/engine`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) throw new Error('Failed to update engine');
+    const data = await response.json();
+    return data.current_engine;
+  },
+
+  getExportHistoryUrl(format: 'json' | 'csv' = 'csv'): string {
+    return `${API_BASE_URL}/api/history/export?format=${format}`;
   }
 };
+

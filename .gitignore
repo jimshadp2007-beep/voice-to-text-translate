@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/.venv/
+.venv/
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database & Runtime Uploads
+*.db
+*.sqlite3
+backend/translator.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/tts_output/*
+!backend/tts_output/.gitkeep
+*.log
+
+# Node & Frontend
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+.npm/
+*.local
+
+# Environment variables
+.env
+frontend/.env.local
+frontend/.env.*.local
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

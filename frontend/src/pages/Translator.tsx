@@ -57,11 +57,31 @@ export const Translator: React.FC<TranslatorProps> = ({
   const [isEditingSource, setIsEditingSource] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Engine & Audio State
+  const [activeEngine, setActiveEngine] = useState<string>("auto");
+  const [inputAudioUrl, setInputAudioUrl] = useState<string | null>(null);
+
   // Audio Playback states (for translated TTS)
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
   const [ttsSpeed, setTtsSpeed] = useState<number>(1.0);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Load Engine Config on Mount
+  useEffect(() => {
+    api.getEngine().then((data) => {
+      if (data?.current_engine) setActiveEngine(data.current_engine);
+    }).catch(() => {});
+  }, []);
+
+  const handleSwitchEngine = async (eng: string) => {
+    try {
+      const updated = await api.setEngine(eng);
+      setActiveEngine(updated);
+    } catch (e: any) {
+      console.error("Failed to switch engine:", e);
+    }
+  };
 
   // Sync recording blob to trigger translation
   useEffect(() => {
@@ -73,6 +93,7 @@ export const Translator: React.FC<TranslatorProps> = ({
   // Audio playback speed changer
   useEffect(() => {
     if (ttsAudioRef.current) {
+
       ttsAudioRef.current.playbackRate = ttsSpeed;
     }
   }, [ttsSpeed]);
@@ -114,10 +135,14 @@ export const Translator: React.FC<TranslatorProps> = ({
       setAudioDuration(null);
       
       // Load static TTS
-      const ttsUrl = result.translated_audio_filename 
-        ? api.getTTSStaticUrl(result.translated_audio_filename) 
-        : await api.getTTSStreamUrl(result.translated_text, targetLang);
-      setTtsAudioUrl(ttsUrl);
+      if (result.tts_url) {
+        setTtsAudioUrl(api.getBaseUrl() + result.tts_url);
+      } else {
+        const ttsUrl = result.translated_audio_filename 
+          ? api.getTTSStaticUrl(result.translated_audio_filename) 
+          : await api.getTTSStreamUrl(result.translated_text, targetLang);
+        setTtsAudioUrl(ttsUrl);
+      }
       
       addHistoryItem(result);
       triggerConfetti();
@@ -141,6 +166,11 @@ export const Translator: React.FC<TranslatorProps> = ({
       setDetectedLang(result.detected_lang);
       setAudioDuration(result.duration ?? null);
       
+      // Store original audio URL if returned
+      if (result.audio_url) {
+        setInputAudioUrl(api.getBaseUrl() + result.audio_url);
+      }
+
       // Load audio stream
       if (result.tts_url) {
         setTtsAudioUrl(api.getBaseUrl() + result.tts_url);
@@ -152,6 +182,7 @@ export const Translator: React.FC<TranslatorProps> = ({
       addHistoryItem(result);
       triggerConfetti();
     } catch (error: any) {
+
       console.error(error);
       setErrorMessage(error.message || 'Speech recognition or translation failed.');
     } finally {
@@ -448,6 +479,65 @@ export const Translator: React.FC<TranslatorProps> = ({
           />
         </div>
 
+        {/* Engine Switcher Bar & Live Status */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+            <span>AI Translation Engine:</span>
+            <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200/50 dark:border-slate-750">
+              {[
+                { id: 'auto', label: 'Auto' },
+                { id: 'fast', label: '⚡ Fast Cloud' },
+                { id: 'nllb', label: '🧠 Meta NLLB-200' },
+              ].map((eng) => (
+                <button
+                  key={eng.id}
+                  type="button"
+                  onClick={() => handleSwitchEngine(eng.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-all ${
+                    activeEngine === eng.id
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {eng.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>16kHz HD Audio Pipeline Active</span>
+          </div>
+        </div>
+
+        {/* One-Click Quick Test Phrases */}
+        <div className="flex flex-col gap-1.5 px-1">
+          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            Quick Prompts:
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: '👋 Greeting', text: 'Hello, welcome to our AI voice translator presentation!' },
+              { label: '🏥 Medical', text: 'Please tell me what symptoms or health issues you are experiencing.' },
+              { label: '🚆 Travel', text: 'Excuse me, could you please guide me to the nearest train station?' },
+              { label: '🙏 Gratitude', text: 'Thank you very much for your kind support and assistance.' },
+            ].map((p, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setInputText(p.text);
+                  setIsEditingSource(true);
+                }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 border border-slate-200/50 dark:border-slate-750 transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Global Error Banner */}
         {errorMessage && (
           <div className="flex items-start gap-2.5 p-4 rounded-3xl bg-danger/10 border border-danger/25 text-danger text-sm font-semibold leading-relaxed">
@@ -505,21 +595,34 @@ export const Translator: React.FC<TranslatorProps> = ({
             </div>
 
             {/* Source controls */}
-            <div className="p-3 bg-slate-50/50 dark:bg-slate-900/30 rounded-b-3xl border-t border-slate-100 dark:border-slate-800/50 flex justify-between">
-              <button
-                type="button"
-                onClick={() => copyToClipboard(inputText, 'source')}
-                disabled={!inputText}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-40"
-              >
-                {copiedSource ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-              </button>
+            <div className="p-3 bg-slate-50/50 dark:bg-slate-900/30 rounded-b-3xl border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center">
+              <div className="flex gap-2 items-center">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(inputText, 'source')}
+                  disabled={!inputText}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-40"
+                  title="Copy Original Text"
+                >
+                  {copiedSource ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                </button>
+                {inputAudioUrl && (
+                  <a
+                    href={inputAudioUrl}
+                    download={`speech_${Date.now()}.wav`}
+                    className="p-2 rounded-xl text-slate-400 hover:text-primary transition-colors"
+                    title="Download Original Recording (WAV)"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
 
               <button
                 type="button"
                 onClick={handleTranslateText}
                 disabled={!inputText.trim() || isTranslating}
-                className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-650 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-40"
+                className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-650 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-40 shadow-sm"
               >
                 {isTranslating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                 <span>Translate</span>
@@ -570,7 +673,7 @@ export const Translator: React.FC<TranslatorProps> = ({
                   <button
                     type="button"
                     onClick={handlePlayTTS}
-                    className="p-2 rounded-xl bg-primary text-white hover:bg-primary-dark transition-all flex items-center justify-center"
+                    className="p-2 rounded-xl bg-primary text-white hover:bg-primary-dark transition-all flex items-center justify-center shadow-sm"
                     title={isPlayingTTS ? "Pause Speech" : "Speak translation"}
                   >
                     {isPlayingTTS ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
@@ -624,6 +727,16 @@ export const Translator: React.FC<TranslatorProps> = ({
                 >
                   <Download className="w-4 h-4" />
                 </button>
+                {ttsAudioUrl && (
+                  <a
+                    href={ttsAudioUrl}
+                    download={`translation_${targetLang}_${Date.now()}.mp3`}
+                    className="p-2 rounded-xl text-slate-400 hover:text-secondary transition-colors"
+                    title="Download Synthesized Speech (MP3)"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                  </a>
+                )}
               </div>
 
               {outputText && (
@@ -637,6 +750,7 @@ export const Translator: React.FC<TranslatorProps> = ({
             </div>
 
           </div>
+
 
         </div>
 

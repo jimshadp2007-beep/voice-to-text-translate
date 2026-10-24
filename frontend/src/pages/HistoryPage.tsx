@@ -112,21 +112,44 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           </p>
         </div>
 
-        {/* Clear all button */}
-        {history.length > 0 && (
-          <button
-            onClick={() => {
-              if (window.confirm("Are you sure you want to clear all translation history? This action is permanent.")) {
-                onClearHistory();
-              }
-            }}
-            className="flex items-center gap-1.5 px-4 py-2 text-danger bg-danger/10 hover:bg-danger/15 rounded-xl text-xs font-bold transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Clear History</span>
-          </button>
-        )}
+        {/* Header Action Buttons */}
+        <div className="flex items-center gap-2">
+          {history.length > 0 && (
+            <>
+              <a
+                href={api.getExportHistoryUrl('csv')}
+                download
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors"
+                title="Download History as CSV spreadsheet"
+              >
+                <Download className="w-3.5 h-3.5 text-primary" />
+                <span>Export CSV</span>
+              </a>
+              <a
+                href={api.getExportHistoryUrl('json')}
+                download
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors"
+                title="Download History as JSON data"
+              >
+                <Archive className="w-3.5 h-3.5 text-secondary" />
+                <span>JSON</span>
+              </a>
+              <button
+                onClick={() => {
+                  if (window.confirm("Are you sure you want to clear all translation history? This action is permanent.")) {
+                    onClearHistory();
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-danger bg-danger/10 hover:bg-danger/15 rounded-xl text-xs font-bold transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear All</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
 
       {/* Filters bar */}
       <div className="glass-panel p-4 rounded-3xl border border-slate-200/50 dark:border-slate-800/60 shadow-md flex flex-col sm:flex-row gap-4 items-center justify-between">
@@ -290,6 +313,30 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
                     {/* Mini toolbar */}
                     <div className="md:col-span-2 flex justify-end gap-2.5 mt-2">
+                      {item.translated_audio_filename && (
+                        <a
+                          href={api.getTTSStaticUrl(item.translated_audio_filename) || '#'}
+                          download={`translation_${item.id}.mp3`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 transition-colors"
+                          title="Download synthesized audio"
+                        >
+                          <Download className="w-3.5 h-3.5 text-secondary" />
+                          <span>Download Audio</span>
+                        </a>
+                      )}
+                      {item.original_audio_filename && (
+                        <a
+                          href={api.getAudioStaticUrl(item.original_audio_filename) || '#'}
+                          download={`speech_${item.id}.wav`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 transition-colors"
+                          title="Download original voice recording"
+                        >
+                          <Volume2 className="w-3.5 h-3.5 text-primary" />
+                          <span>Voice WAV</span>
+                        </a>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => copyText(item.translated_text, item.id, e)}
@@ -299,6 +346,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                         <span>{copiedId === item.id ? 'Copied' : 'Copy Translation'}</span>
                       </button>
                     </div>
+
 
                   </div>
                 )}

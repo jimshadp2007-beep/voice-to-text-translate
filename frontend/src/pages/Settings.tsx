@@ -21,6 +21,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [backendHealthy, setBackendHealthy] = useState<boolean | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
   const [modelStates, setModelStates] = useState<{ whisper: boolean; nllb: boolean } | null>(null);
+  const [currentEngine, setCurrentEngine] = useState<string>("auto");
+  const [engineUpdating, setEngineUpdating] = useState(false);
   
   // Local Settings
   const [fontSize, setFontSize] = useState(() => localStorage.getItem('fontSize') || 'md');
@@ -28,6 +30,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
   useEffect(() => {
     checkHealth();
+    api.getEngine().then((data) => {
+      if (data?.current_engine) setCurrentEngine(data.current_engine);
+    }).catch(() => {});
   }, []);
 
   const checkHealth = async () => {
@@ -41,6 +46,7 @@ export const Settings: React.FC<SettingsProps> = ({
       if (response.ok) {
         const data = await response.json();
         setModelStates(data.models_cached);
+        if (data.current_engine) setCurrentEngine(data.current_engine);
       }
     } catch {
       setBackendHealthy(false);
@@ -49,9 +55,22 @@ export const Settings: React.FC<SettingsProps> = ({
     }
   };
 
+  const handleEngineChange = async (eng: string) => {
+    setEngineUpdating(true);
+    try {
+      const updated = await api.setEngine(eng);
+      setCurrentEngine(updated);
+    } catch (err) {
+      console.error("Failed to update engine:", err);
+    } finally {
+      setEngineUpdating(false);
+    }
+  };
+
   const handleFontSizeChange = (size: string) => {
     setFontSize(size);
     localStorage.setItem('fontSize', size);
+
     
     // Apply globally to HTML element
     const html = document.documentElement;
@@ -172,7 +191,70 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
 
+          {/* Card 3: AI Translation Engine Selection */}
+          <div className="glass-panel p-6 rounded-3xl border border-slate-200/50 dark:border-slate-800/60 shadow-md flex flex-col gap-4">
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-primary" />
+              Machine Translation Pipeline
+            </h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+              Choose the neural translation model used for text and speech translation.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
+              {[
+                {
+                  id: 'auto',
+                  title: 'Auto (Recommended)',
+                  desc: 'Uses cached NLLB if available, otherwise instant Cloud engine',
+                  badge: 'Smart'
+                },
+                {
+                  id: 'fast',
+                  title: 'Fast Cloud',
+                  desc: 'Instant zero-wait translation across all 15+ languages',
+                  badge: 'Zero Download'
+                },
+                {
+                  id: 'nllb',
+                  title: 'Meta NLLB-200',
+                  desc: 'Deep local neural sequence-to-sequence model',
+                  badge: 'Neural Local'
+                }
+              ].map((engine) => (
+                <button
+                  key={engine.id}
+                  type="button"
+                  onClick={() => handleEngineChange(engine.id)}
+                  disabled={engineUpdating}
+                  className={`flex flex-col items-start p-4 rounded-2xl border text-left transition-all ${
+                    currentEngine === engine.id
+                      ? 'border-primary bg-primary/10 shadow-sm'
+                      : 'border-slate-200 dark:border-slate-800/80 bg-white/50 dark:bg-slate-850/50 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                      {engine.title}
+                    </span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                      currentEngine === engine.id
+                        ? 'bg-primary text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {engine.badge}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium leading-relaxed">
+                    {engine.desc}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
         </div>
+
 
         {/* System Diagnostics Panel (Spans 1 column) */}
         <div className="md:col-span-1 flex flex-col gap-6">
